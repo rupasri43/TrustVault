@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 from flask import Flask, jsonify
-
 from auth import auth_bp
-
+from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import generate_csrf
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "trustvault.db"
 UPLOAD_FOLDER = BASE_DIR / "private_uploads"
@@ -11,7 +11,8 @@ UPLOAD_FOLDER = BASE_DIR / "private_uploads"
 
 def create_app():
     app = Flask(__name__)
-
+    csrf = CSRFProtect()
+    csrf.init_app(app)
     app.config["DATABASE"] = str(DATABASE_PATH)
     app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
@@ -43,7 +44,11 @@ def create_app():
             "status": "healthy",
             "service": "TrustVault API"
         }), 200
-
+    @app.route("/api/csrf-token", methods=["GET"])
+    def get_csrf_token():
+        return jsonify({
+            "csrf_token": generate_csrf()
+        }), 200
     return app
 
 
