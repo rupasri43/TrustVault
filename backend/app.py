@@ -4,6 +4,8 @@ from flask import Flask, jsonify
 from auth import auth_bp
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
+from documents import documents_bp
+from admin import admin_bp
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "trustvault.db"
 UPLOAD_FOLDER = BASE_DIR / "private_uploads"
@@ -17,6 +19,9 @@ def create_app():
     app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(admin_bp)
     # Secret key must be supplied through an environment variable.
     app.config["SECRET_KEY"] = os.environ.get("TRUSTVAULT_SECRET_KEY")
     app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -27,8 +32,6 @@ def create_app():
         raise RuntimeError("TRUSTVAULT_SECRET_KEY environment variable is missing")
 
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-
-    app.register_blueprint(auth_bp)
 
     @app.route("/", methods=["GET"])
     def home():

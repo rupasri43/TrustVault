@@ -16,7 +16,7 @@ def get_auth_db():
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
-def write_auth_audit(actor_id, action, outcome, details=None):
+def write_auth_audit(actor_id, action, outcome, details=None, document_id=None):
     connection = get_auth_db()
 
     try:
@@ -36,6 +36,7 @@ def write_auth_audit(actor_id, action, outcome, details=None):
 
         audit_data = {
             "actor_id": actor_id,
+            "document_id": document_id,
             "action": action,
             "outcome": outcome,
             "details": details,
@@ -54,13 +55,14 @@ def write_auth_audit(actor_id, action, outcome, details=None):
         connection.execute(
             """
             INSERT INTO audit_logs (
-                actor_id, action, outcome, details,
+                actor_id, document_id, action, outcome, details,
                 previous_hash, entry_hash, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 actor_id,
+                document_id,
                 action,
                 outcome,
                 json.dumps(details) if details else None,
@@ -127,6 +129,7 @@ def admin_check():
         "message": "Administrator access granted",
         "role": g.current_user["role"]
     }), 200
+
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json(silent=True)
@@ -169,22 +172,23 @@ def register():
         )
         connection.commit()
 
+        write_auth_audit(
+            actor_id=None,
+            action="user_registration",
+            outcome="success",
+            details={"email": email, "role": "owner"}
+        )
+
         return jsonify({
             "message": "Registration successful",
             "role": "owner"
         }), 201
-        write_auth_audit(
-        actor_id=None,
-        action="user_registration",
-        outcome="success",
-        details={"email": email, "role": "owner"}
-        )
+
     except sqlite3.IntegrityError:
         return jsonify({"error": "Email is already registered"}), 409
 
     finally:
         connection.close()
-
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
@@ -236,10 +240,10 @@ def login():
     session["user_id"] = user["id"]
     session["role"] = user["role"]
     write_auth_audit(
-    actor_id=user["id"],
-    action="user_login",
-    outcome="success",
-    details={"email": user["email"]}
+        actor_id=user["id"],
+        action="user_login",
+        outcome="success",
+        details={"email": user["email"]}
     )
     return jsonify({
         "message": "Login successful",
