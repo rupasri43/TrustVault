@@ -7,8 +7,9 @@ from flask_wtf.csrf import generate_csrf
 from documents import documents_bp
 from admin import admin_bp
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = BASE_DIR / "trustvault.db"
-UPLOAD_FOLDER = BASE_DIR / "private_uploads"
+DATA_DIR = Path(os.environ.get("TRUSTVAULT_DATA_DIR", str(BASE_DIR)))
+DATABASE_PATH = DATA_DIR / "trustvault.db"
+UPLOAD_FOLDER = DATA_DIR / "private_uploads"
 
 
 def create_app():
@@ -26,11 +27,11 @@ def create_app():
     app.config["SECRET_KEY"] = os.environ.get("TRUSTVAULT_SECRET_KEY")
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = False
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
 
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("TRUSTVAULT_SECRET_KEY environment variable is missing")
-
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
     @app.route("/", methods=["GET"])

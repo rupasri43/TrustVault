@@ -65,7 +65,7 @@ def write_auth_audit(actor_id, action, outcome, details=None, document_id=None):
                 document_id,
                 action,
                 outcome,
-                json.dumps(details) if details else None,
+                json.dumps(details) if details is not None else None,
                 previous_hash,
                 entry_hash,
                 created_at

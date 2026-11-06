@@ -423,3 +423,186 @@ def delete_document(document_id):
 
     finally:
         connection.close()
+
+@documents_bp.route("/<int:document_id>/permissions", methods=["GET"])
+@login_required
+def list_document_permissions(document_id):
+    connection = get_auth_db()
+
+    try:
+        document, access = has_document_access(
+            connection, document_id, g.current_user["id"]
+        )
+
+        if not document or access is None:
+            return jsonify({"error": "Document not found or access denied"}), 403
+
+        rows = connection.execute(
+            """
+            SELECT p.id, p.document_id, p.user_id, p.permission,
+                   p.granted_at, u.name AS user_name, u.email AS user_email
+            FROM permissions p
+            JOIN users u ON u.id = p.user_id
+            WHERE p.document_id = ?
+            ORDER BY p.id DESC
+            """,
+            (document_id,)
+        ).fetchall()
+
+        return jsonify([
+            {
+                "id": str(row["id"]),
+                "documentId": str(row["document_id"]),
+                "userId": str(row["user_id"]),
+                "userName": row["user_name"],
+                "userEmail": row["user_email"],
+                "access": "edit" if row["permission"] == "edit" else "view",
+                "grantedAt": row["granted_at"],
+                "expiresAt": None
+            }
+            for row in rows
+        ]), 200
+
+    finally:
+        connection.close()
+@documents_bp.route("/<int:document_id>/permissions", methods=["POST"])
+@login_required
+def grant_document_permission(document_id):
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request data"}), 400
+
+    email = data.get("email")
+    access = data.get("access")
+
+    if not isinstance(email, str) or access not in ("view", "download", "edit"):
+        return jsonify({"error": "Valid email and access level are required"}), 400
+
+    email = email.strip().lower()
+    backend_permission = "edit" if access == "edit" else "read"
+
+    connection = get_auth_db()
+
+    try:
+        document, permission = has_document_access(
+            connection, document_id, g.current_user["id"]
+        )
+
+        if not document or permission != "owner":
+            return jsonify({"error": "Only the document owner can share it"}), 403
+
+        recipient = connection.execute(
+            "SELECT id, name, email FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+
+        if recipient is None:
+            return jsonify({"error": "Recipient account not found. They must register first."}), 404
+
+        if recipient["id"] == document["owner_id"]:
+            return jsonify({"error": "You already own this document"}), 400
+
+        connection.execute(
+            """
+            INSERT INTO permissions (document_id, user_id, permission, granted_by)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(document_id, user_id)
+            DO UPDATE SET permission = excluded.permission,
+                          granted_by = excluded.granted_by,
+                          granted_at = CURRENT_TIMESTAMP
+            """,
+            (
+                document_id,
+                recipient["id"],
+                backend_permission,
+                g.current_user["id"]
+            )
+        )
+        connection.commit()
+
+        write_auth_audit(
+            actor_id=g.current_user["id"],
+            action="document_share",
+            outcome="success",
+            details={
+                "document_id": document_id,
+                "recipient": email,
+                "permission": backend_permission
+            },
+            document_id=document_id
+        )
+
+        row = connection.execute(
+            """
+            SELECT id, document_id, user_id, permission, granted_at
+            FROM permissions
+            WHERE document_id = ? AND user_id = ?
+            """,
+            (document_id, recipient["id"])
+        ).fetchone()
+
+        return jsonify({
+            "id": str(row["id"]),
+            "documentId": str(row["document_id"]),
+            "userId": str(row["user_id"]),
+            "userName": recipient["name"],
+            "userEmail": recipient["email"],
+            "access": access,
+            "grantedAt": row["granted_at"],
+            "expiresAt": None
+        }), 201
+
+    finally:
+        connection.close()
+
+
+@documents_bp.route(
+    "/<int:document_id>/permissions/<int:permission_id>",
+    methods=["DELETE"]
+)
+@login_required
+def revoke_document_permission(document_id, permission_id):
+    connection = get_auth_db()
+
+    try:
+        document, permission = has_document_access(
+            connection, document_id, g.current_user["id"]
+        )
+
+        if not document or permission != "owner":
+            return jsonify({"error": "Only the document owner can revoke access"}), 403
+
+        row = connection.execute(
+            """
+            SELECT id, user_id FROM permissions
+            WHERE id = ? AND document_id = ?
+            """,
+            (permission_id, document_id)
+        ).fetchone()
+
+        if row is None:
+            return jsonify({"error": "Permission not found"}), 404
+
+        connection.execute(
+            "DELETE FROM permissions WHERE id = ?",
+            (permission_id,)
+        )
+        connection.commit()
+
+        write_auth_audit(
+            actor_id=g.current_user["id"],
+            action="document_revoke",
+            outcome="success",
+            details={
+                "document_id": document_id,
+                "permission_id": permission_id,
+                "user_id": row["user_id"]
+            },
+            document_id=document_id
+        )
+
+        return jsonify({"message": "Document access revoked"}), 200
+
+    finally:
+        connection.close()

@@ -23,3 +23,20 @@ storage/
 .DS_Store
 Thumbs.db
 backend/private_uploads/
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/.output/
+frontend/dist/
+
+# Frontend environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Test artifacts
+downloaded-test.txt
+test-document.txt
+viewer-download.txt
+# Local maintenance scripts
+backend/create_test_admin.py
+backend/migrate_audit_table.py
