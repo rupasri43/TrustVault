@@ -5,6 +5,7 @@ from auth import auth_bp
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
 from documents import documents_bp
+from flask_cors import CORS
 from admin import admin_bp
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("TRUSTVAULT_DATA_DIR", str(BASE_DIR)))
@@ -14,6 +15,16 @@ UPLOAD_FOLDER = DATA_DIR / "private_uploads"
 
 def create_app():
     app = Flask(__name__)
+    CORS(
+    app,
+    origins=[
+        "http://localhost:8080",
+        os.environ.get("FRONTEND_ORIGIN", "http://localhost:8080")
+    ],
+    supports_credentials=True,
+    allow_headers=["Content-Type", "X-CSRFToken", "X-CSRF-Token"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+)
     csrf = CSRFProtect()
     csrf.init_app(app)
     app.config["DATABASE"] = str(DATABASE_PATH)
@@ -25,9 +36,8 @@ def create_app():
     app.register_blueprint(admin_bp)
     # Secret key must be supplied through an environment variable.
     app.config["SECRET_KEY"] = os.environ.get("TRUSTVAULT_SECRET_KEY")
-    app.config["SESSION_COOKIE_HTTPONLY"] = True
-    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+    app.config["SESSION_COOKIE_SAMESITE"] = "None"
+    app.config["SESSION_COOKIE_SECURE"] = True
 
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("TRUSTVAULT_SECRET_KEY environment variable is missing")
