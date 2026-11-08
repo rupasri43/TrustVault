@@ -36,6 +36,7 @@ def create_app():
     app.register_blueprint(admin_bp)
     # Secret key must be supplied through an environment variable.
     app.config["SECRET_KEY"] = os.environ.get("TRUSTVAULT_SECRET_KEY")
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "None"
     app.config["SESSION_COOKIE_SECURE"] = True
 
