@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import sqlite3
 from flask import Flask, jsonify
 from auth import auth_bp
 from flask_wtf.csrf import CSRFProtect
@@ -11,7 +12,23 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("TRUSTVAULT_DATA_DIR", str(BASE_DIR)))
 DATABASE_PATH = DATA_DIR / "trustvault.db"
 UPLOAD_FOLDER = DATA_DIR / "private_uploads"
+def initialize_database():
+    schema_path = BASE_DIR / "schema.sql"
 
+    if not schema_path.exists():
+        raise FileNotFoundError(
+            f"Database schema not found: {schema_path}"
+        )
+
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        schema = schema_path.read_text(encoding="utf-8")
+        connection.executescript(schema)
+        print("TrustVault database initialized successfully.")
+    finally:
+        connection.close()
 
 def create_app():
     app = Flask(__name__)
@@ -45,7 +62,7 @@ def create_app():
         raise RuntimeError("TRUSTVAULT_SECRET_KEY environment variable is missing")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-
+    initialize_database()
     @app.route("/", methods=["GET"])
     def home():
         return jsonify({
