@@ -29,13 +29,13 @@ export const MOCK_PERMISSIONS: Permission[] = [
 ];
 
 export const MOCK_AUDIT: AuditEvent[] = [
-  { id: "a1", at: "2026-11-01T14:52:00Z", actorName: "Anika Rao", actorEmail: "anika.rao@example.com", action: "login", target: "Session", ip: "10.0.4.21", outcome: "success" },
-  { id: "a2", at: "2026-11-01T14:31:00Z", actorName: "Lucas Brandt", actorEmail: "lucas.brandt@example.com", action: "download", target: "Q4 Board Financial Statement", ip: "10.0.7.88", outcome: "denied" },
-  { id: "a3", at: "2026-11-01T13:12:00Z", actorName: "Daniel Okafor", actorEmail: "daniel.okafor@example.com", action: "share", target: "Q4 Board Financial Statement → Lucas Brandt", ip: "10.0.2.14", outcome: "success" },
-  { id: "a4", at: "2026-11-01T12:30:00Z", actorName: "Daniel Okafor", actorEmail: "daniel.okafor@example.com", action: "upload", target: "Q4 Board Financial Statement v3", ip: "10.0.2.14", outcome: "success" },
-  { id: "a5", at: "2026-11-01T09:05:00Z", actorName: "Lucas Brandt", actorEmail: "lucas.brandt@example.com", action: "view", target: "Vendor Master Services Agreement", ip: "10.0.7.88", outcome: "success" },
-  { id: "a6", at: "2026-10-31T22:48:00Z", actorName: "unknown", actorEmail: "s.qureshi@example.com", action: "failed_login", target: "Session", ip: "203.0.113.42", outcome: "denied" },
-  { id: "a7", at: "2026-10-31T18:40:00Z", actorName: "Meera Iyer", actorEmail: "meera.iyer@example.com", action: "revoke", target: "Pentest Report → Lucas Brandt", ip: "10.0.3.9", outcome: "success" },
+  { id: "a1", at: "2026-11-01T14:52:00Z", actorName: "Anika Rao", actorEmail: "anika.rao@example.com", action: "user_login", target: "Session", ip: "10.0.4.21", outcome: "success" },
+  { id: "a2", at: "2026-11-01T14:31:00Z", actorName: "Lucas Brandt", actorEmail: "lucas.brandt@example.com", action: "document_download", target: "Q4 Board Financial Statement", ip: "10.0.7.88", outcome: "denied" },
+  { id: "a3", at: "2026-11-01T13:12:00Z", actorName: "Daniel Okafor", actorEmail: "daniel.okafor@example.com", action: "document_share", target: "Q4 Board Financial Statement → Lucas Brandt", ip: "10.0.2.14", outcome: "success" },
+  { id: "a4", at: "2026-11-01T12:30:00Z", actorName: "Daniel Okafor", actorEmail: "daniel.okafor@example.com", action: "document_upload", target: "Q4 Board Financial Statement v3", ip: "10.0.2.14", outcome: "success" },
+  { id: "a5", at: "2026-11-01T09:05:00Z", actorName: "Lucas Brandt", actorEmail: "lucas.brandt@example.com", action: "document_view", target: "Vendor Master Services Agreement", ip: "10.0.7.88", outcome: "success" },
+  { id: "a6", at: "2026-10-31T22:48:00Z", actorName: "unknown", actorEmail: "s.qureshi@example.com", action: "user_login", target: "Session", ip: "203.0.113.42", outcome: "denied" },
+  { id: "a7", at: "2026-10-31T18:40:00Z", actorName: "Meera Iyer", actorEmail: "meera.iyer@example.com", action: "document_revoke", target: "Pentest Report → Lucas Brandt", ip: "10.0.3.9", outcome: "success" },
   { id: "a8", at: "2026-10-31T10:02:00Z", actorName: "Anika Rao", actorEmail: "anika.rao@example.com", action: "role_change", target: "Sana Qureshi → suspended", ip: "10.0.4.21", outcome: "success" },
 ];
 

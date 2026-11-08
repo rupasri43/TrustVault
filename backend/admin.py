@@ -1,10 +1,13 @@
 
 from flask import Blueprint, jsonify, request, g
+from pathlib import Path
+from flask import current_app
 from auth import (
     get_auth_db,
     login_required,
     role_required,
     write_auth_audit,
+    verify_audit_chain,
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -60,6 +63,18 @@ def get_audit_logs():
         connection.close()
 
 
+@admin_bp.route("/audit/verify", methods=["GET"])
+@login_required
+@role_required("admin")
+def verify_audit():
+    connection = get_auth_db()
+    try:
+        result = verify_audit_chain(connection)
+        return jsonify(result), 200
+    finally:
+        connection.close()
+
+
 @admin_bp.route("/stats", methods=["GET"])
 @login_required
 @role_required("admin")
@@ -87,12 +102,17 @@ def get_admin_stats():
             """
         ).fetchone()[0]
 
+        upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+        storage_used = sum(
+            item.stat().st_size for item in upload_dir.iterdir() if item.is_file()
+        ) if upload_dir.exists() else 0
+
         return jsonify({
             "totalUsers": total_users,
             "totalDocuments": total_documents,
             "activeShares": active_shares,
             "deniedAttempts24h": denied_attempts,
-            "storageUsedBytes": 0
+            "storageUsedBytes": storage_used
         }), 200
     finally:
         connection.close()

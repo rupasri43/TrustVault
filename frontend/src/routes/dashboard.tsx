@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FileText, Search, Upload, Users } from "lucide-react";
 import { AppShell } from "@/components/tv/AppShell";
 import { ClassificationTag, MockNotice, PageHeader, Panel, Stat, inputCls } from "@/components/tv/primitives";
-import { PREVIEW_USER_ID, usePreviewRole } from "@/lib/preview-role";
+import { authApi } from "@/services/api";
+import type { AuthUser } from "@/services/api/types";
+import { useNavigate } from "@tanstack/react-router";
 import { formatBytes, formatDate } from "@/lib/format";
 import { documentsQuery } from "@/services/queries";
 import { USE_MOCKS, type Classification } from "@/services/api";
@@ -28,20 +30,31 @@ const FILTERS: ("all" | Classification)[] = ["all", "restricted", "confidential"
 
 function Dashboard() {
   const { data: docs } = useSuspenseQuery(documentsQuery());
-  const { role } = usePreviewRole();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    authApi.me().then(setUser).catch(() => navigate({ to: "/" }));
+  }, [navigate]);
+  const role = user?.role ?? null;
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [tab, setTab] = useState<"all" | "mine" | "shared">("all");
-  const myId = PREVIEW_USER_ID[role];
+  const myId = user?.id;
 
   const rows = useMemo(
     () => docs.filter((d) =>
       (filter === "all" || d.classification === filter) &&
       (tab === "all" || (tab === "mine" ? d.ownerId === myId : d.ownerId !== myId)) &&
-      d.title.toLowerCase().includes(q.toLowerCase())),
-    [docs, q, filter, tab, myId],
+      `${d.title} ${d.fileName} ${d.ownerName} ${d.ownerEmail ?? ""}`.toLowerCase().includes(q.toLowerCase()) &&
+      (!dateFrom || d.updatedAt.slice(0, 10) >= dateFrom) &&
+      (!dateTo || d.updatedAt.slice(0, 10) <= dateTo)),
+    [docs, q, filter, tab, myId, dateFrom, dateTo],
   );
-  const canUpload = role !== "viewer";
+  const canUpload = role === "owner";
+
+  if (role === null) return <div className="p-8">Loading your workspace...</div>;
 
   return (
     <AppShell>
@@ -77,6 +90,10 @@ function Dashboard() {
           <div className="relative md:w-80">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title" className={`${inputCls} pl-9`} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-muted-foreground">From <input aria-label="Filter from date" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="ml-1 rounded border border-border bg-background px-2 py-1" /></label>
+            <label className="text-xs text-muted-foreground">To <input aria-label="Filter to date" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="ml-1 rounded border border-border bg-background px-2 py-1" /></label>
           </div>
           <div className="flex flex-wrap gap-1">
             {FILTERS.map((f) => (

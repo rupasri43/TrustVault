@@ -21,11 +21,14 @@ export const Route = createFileRoute("/documents/$id")({
     ],
   }),
   loader: async ({ context, params }) => {
-  await Promise.all([
-    context.queryClient.ensureQueryData(documentQuery(params.id)),
-    context.queryClient.ensureQueryData(permissionsQuery(params.id)),
-  ]);
-},
+    const doc = await context.queryClient.ensureQueryData(documentQuery(params.id));
+    const user = await authApi.me();
+    if (user.id === doc.ownerId) {
+      await context.queryClient.ensureQueryData(permissionsQuery(params.id));
+    } else {
+      context.queryClient.setQueryData(["permissions", params.id], []);
+    }
+  },
   errorComponent: () => (
     <AppShell><div className="rounded-lg border border-border bg-card p-10 text-center"><h2 className="text-xl font-semibold">Document unavailable</h2><p className="mt-2 text-sm text-muted-foreground">It may not exist, or you may not have access.</p><Link to="/dashboard" className="mt-4 inline-block text-sm underline">Back to documents</Link></div></AppShell>
   ),
@@ -35,7 +38,7 @@ export const Route = createFileRoute("/documents/$id")({
 function DocumentDetails() {
   const { id } = Route.useParams();
   const { data: doc } = useSuspenseQuery(documentQuery(id));
-  const { data: perms } = useSuspenseQuery(permissionsQuery(id));
+  const { data: perms = [] } = useSuspenseQuery(permissionsQuery(id));
   const [currentUser, setCurrentUser] = useState<Awaited<ReturnType<typeof authApi.me>> | null>(null);
 
   useEffect(() => {
@@ -66,7 +69,7 @@ const canManage =
     link.click();
     link.remove();
 
-    URL.revokeObjectURL(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     toast.success("Document downloaded successfully.");
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "Download failed.");
@@ -108,7 +111,7 @@ const canManage =
               <div className="min-w-0">
                 <div className="eyebrow text-muted-foreground">SHA-256 fingerprint</div>
                 <code className="mt-1.5 block break-all font-mono text-xs">{doc.sha256}</code>
-                <p className="mt-2 text-xs text-muted-foreground">Reported by the server. Integrity checking is not active in this preview.</p>
+                <p className="mt-2 text-xs text-muted-foreground">Computed by the server from the stored file at request time; it is a fingerprint, not a comparison against a separately stored original hash.</p>
               </div>
             </div>
           </Panel>
@@ -120,7 +123,7 @@ const canManage =
   </ul>
 </Panel>
         </div>
-        <Panel title="Who has access" eyebrow={`${perms.length} people`}>
+        {canManage && <Panel title="Who has access" eyebrow={`${perms.length} people`}>
           <ul>
             {perms.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5 last:border-0">
@@ -130,7 +133,7 @@ const canManage =
             ))}
             {perms.length === 0 && <li className="px-5 py-6 text-sm text-muted-foreground">Only the owner has access.</li>}
           </ul>
-        </Panel>
+        </Panel>}
       </div>
     </AppShell>
   );

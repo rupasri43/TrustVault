@@ -1,0 +1,18 @@
+﻿TrustVault Evaluator Guide
+
+This is a sample document for evaluating TrustVault.
+
+The document owner can:
+- View and manage this document.
+- Grant or revoke access for other users.
+
+The viewer can:
+- View and download this document while permission is granted.
+- No longer access it after permission is revoked.
+
+The administrator can:
+- Review audit activity.
+- Verify audit-chain integrity.
+- Review user and system information.
+
+This file contains no confidential or personal information.

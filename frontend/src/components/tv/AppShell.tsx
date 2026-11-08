@@ -9,8 +9,8 @@ import { Wordmark } from "./primitives";
 type NavItem = { to: "/dashboard" | "/upload" | "/audit" | "/admin"; label: string; icon: typeof Files; roles: Role[] };
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Documents", icon: Files, roles: ["administrator", "owner", "viewer"] },
-  { to: "/upload", label: "Upload", icon: Upload, roles: ["administrator", "owner"] },
-  { to: "/audit", label: "Audit activity", icon: ScrollText, roles: ["administrator", "owner"] },
+  { to: "/upload", label: "Upload", icon: Upload, roles: ["owner"] },
+  { to: "/audit", label: "Audit activity", icon: ScrollText, roles: ["administrator"] },
   { to: "/admin", label: "Administration", icon: ShieldCheck, roles: ["administrator"] },
 ];
 
@@ -102,7 +102,7 @@ export function NotInRoleView({ role }: { role: Role }) {
     <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
       <div className="eyebrow text-brass">Not part of this view</div>
       <h2 className="mt-2 text-xl font-semibold">This page isn't shown to the {ROLE_LABEL[role]} role</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Switch the preview role in the sidebar. In production the backend decides what each account can access.</p>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Your account does not have permission to open this section. The server enforces access independently of the interface.</p>
     </div>
   );
 }

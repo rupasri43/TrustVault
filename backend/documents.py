@@ -1,6 +1,7 @@
 import os
 import uuid
 import sqlite3
+import hashlib
 from pathlib import Path
 
 from flask import (
@@ -23,7 +24,10 @@ ALLOWED_EXTENSIONS = {
 def has_document_access(connection, document_id, user_id):
     """Return the document and the user's effective permission."""
     document = connection.execute(
-        "SELECT * FROM documents WHERE id = ?",
+        """SELECT d.*, owner.name AS owner_name, owner.email AS owner_email,
+                  (SELECT COUNT(*) FROM permissions p WHERE p.document_id = d.id) AS shared_with
+           FROM documents d JOIN users owner ON owner.id = d.owner_id
+           WHERE d.id = ?""",
         (document_id,)
     ).fetchone()
 
@@ -80,6 +84,16 @@ def valid_file_signature(path, extension):
 
 
 def document_response(document):
+    stored_path = Path(current_app.config["UPLOAD_FOLDER"]) / document["stored_filename"]
+    file_size = stored_path.stat().st_size if stored_path.is_file() else 0
+    file_hash = ""
+    if stored_path.is_file():
+        digest = hashlib.sha256()
+        with stored_path.open("rb") as file_handle:
+            for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        file_hash = digest.hexdigest()
+
     return {
         "id": document["id"],
         "title": document["title"],
@@ -87,6 +101,11 @@ def document_response(document):
         "category": document["category"],
         "original_filename": document["original_filename"],
         "owner_id": document["owner_id"],
+        "owner_name": document["owner_name"],
+        "owner_email": document["owner_email"],
+        "size_bytes": file_size,
+        "sha256": file_hash,
+        "shared_with": document["shared_with"],
         "created_at": document["created_at"],
         "updated_at": document["updated_at"]
     }
@@ -98,6 +117,7 @@ def upload_document():
     user = g.current_user
 
     if user["role"] != "owner":
+        audit_document(user["id"], None, "document_upload", "denied", {"reason": "Role cannot upload"})
         return jsonify({"error": "Only document owners can upload files"}), 403
 
     uploaded_file = request.files.get("file")
@@ -110,6 +130,12 @@ def upload_document():
 
     if not title or not category:
         return jsonify({"error": "Title and category are required"}), 400
+
+    if len(title) > 200 or len(description) > 2000:
+        return jsonify({"error": "Title or description is too long"}), 400
+
+    if category not in {"public", "internal", "confidential", "restricted"}:
+        return jsonify({"error": "Invalid document category"}), 400
 
     original_filename = secure_filename(uploaded_file.filename)
 
@@ -187,8 +213,10 @@ def list_documents():
 
     try:
         query = """
-            SELECT DISTINCT d.*
+            SELECT DISTINCT d.*, owner.name AS owner_name, owner.email AS owner_email,
+                   (SELECT COUNT(*) FROM permissions p2 WHERE p2.document_id = d.id) AS shared_with
             FROM documents d
+            JOIN users owner ON owner.id = d.owner_id
             LEFT JOIN permissions p
                 ON p.document_id = d.id AND p.user_id = ?
             WHERE (d.owner_id = ? OR p.user_id = ?)
@@ -201,10 +229,28 @@ def list_documents():
                     d.title LIKE ?
                     OR d.original_filename LIKE ?
                     OR d.category LIKE ?
+                    OR owner.name LIKE ?
+                    OR owner.email LIKE ?
                 )
             """
             pattern = f"%{search}%"
-            parameters.extend([pattern, pattern, pattern])
+            parameters.extend([pattern, pattern, pattern, pattern, pattern])
+
+        owner_filter = request.args.get("owner", "").strip()
+        if owner_filter:
+            query += " AND (owner.name LIKE ? OR owner.email LIKE ?)"
+            owner_pattern = f"%{owner_filter}%"
+            parameters.extend([owner_pattern, owner_pattern])
+
+        date_from = request.args.get("date_from", "").strip()
+        if date_from:
+            query += " AND date(d.created_at) >= date(?)"
+            parameters.append(date_from)
+
+        date_to = request.args.get("date_to", "").strip()
+        if date_to:
+            query += " AND date(d.created_at) <= date(?)"
+            parameters.append(date_to)
 
         if category:
             query += " AND d.category = ?"
@@ -242,6 +288,7 @@ def get_document(document_id):
             )
             return jsonify({"error": "Document not found or access denied"}), 404
 
+        audit_document(user["id"], document_id, "document_view", "success")
         return jsonify({
             "document": document_response(document),
             "permission": permission
@@ -376,19 +423,6 @@ def delete_document(document_id):
             / document["stored_filename"]
         )
 
-        # Record deletion before removing the document.
-        # Keep document_id in details because audit_logs has a foreign key.
-        audit_document(
-            user["id"],
-            None,
-            "document_delete",
-            "success",
-            {
-                "document_id": document_id,
-                "filename": document["original_filename"]
-            }
-        )
-
         connection.execute(
             "DELETE FROM permissions WHERE document_id = ?",
             (document_id,)
@@ -434,8 +468,9 @@ def list_document_permissions(document_id):
             connection, document_id, g.current_user["id"]
         )
 
-        if not document or access is None:
-            return jsonify({"error": "Document not found or access denied"}), 403
+        if not document or access != "owner":
+            audit_document(g.current_user["id"], document_id, "permission_list", "denied")
+            return jsonify({"error": "Only the document owner can view the access list"}), 403
 
         rows = connection.execute(
             """
@@ -480,6 +515,8 @@ def grant_document_permission(document_id):
         return jsonify({"error": "Valid email and access level are required"}), 400
 
     email = email.strip().lower()
+    if len(email) > 254 or "@" not in email or any(ch.isspace() for ch in email):
+        return jsonify({"error": "Invalid email address"}), 400
     backend_permission = "edit" if access == "edit" else "read"
 
     connection = get_auth_db()
@@ -490,6 +527,7 @@ def grant_document_permission(document_id):
         )
 
         if not document or permission != "owner":
+            audit_document(g.current_user["id"], document_id, "document_share", "denied")
             return jsonify({"error": "Only the document owner can share it"}), 403
 
         recipient = connection.execute(
@@ -571,6 +609,7 @@ def revoke_document_permission(document_id, permission_id):
         )
 
         if not document or permission != "owner":
+            audit_document(g.current_user["id"], document_id, "document_revoke", "denied")
             return jsonify({"error": "Only the document owner can revoke access"}), 403
 
         row = connection.execute(
@@ -582,6 +621,7 @@ def revoke_document_permission(document_id, permission_id):
         ).fetchone()
 
         if row is None:
+            audit_document(g.current_user["id"], document_id, "document_revoke", "denied", {"reason": "Permission not found"})
             return jsonify({"error": "Permission not found"}), 404
 
         connection.execute(

@@ -1,15 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell, NotInRoleView } from "@/components/tv/AppShell";
 import { Search } from "lucide-react";
 import { MockNotice, PageHeader, Panel, inputCls } from "@/components/tv/primitives";
-import { usePreviewRole } from "@/lib/preview-role";
+import { auditApi, authApi } from "@/services/api";
+import type { Role } from "@/services/api/types";
+import { useNavigate } from "@tanstack/react-router";
 import { formatDateTime } from "@/lib/format";
 import { auditQuery } from "@/services/queries";
 import { USE_MOCKS, type AuditAction } from "@/services/api";
 
-const ACTIONS: AuditAction[] = ["login", "failed_login", "upload", "view", "download", "share", "revoke", "delete", "role_change"];
+const ACTIONS: AuditAction[] = ["user_login", "user_logout", "user_registration", "document_upload", "document_view", "document_download", "document_edit", "document_delete", "document_share", "document_revoke", "role_change"];
 
 export const Route = createFileRoute("/audit")({
   head: () => ({
@@ -22,16 +24,25 @@ export const Route = createFileRoute("/audit")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(auditQuery()),
   component: Audit,
 });
 
 function Audit() {
-  const { role } = usePreviewRole();
-  const { data } = useSuspenseQuery(auditQuery());
-  const [outcome, setOutcome] = useState<"all" | "success" | "denied">("all");
+  const [role, setRole] = useState<Role | null>(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    authApi.me().then((user) => setRole(user.role)).catch(() => navigate({ to: "/" }));
+  }, [navigate]);
+  const { data = [], isPending, isError } = useQuery(auditQuery());
+  if (isPending) return <div className="p-8">Loading audit activity...</div>;
+  if (isError) return <div className="p-8">Unable to load audit activity. Please refresh.</div>;
+  const [outcome, setOutcome] = useState<"all" | "success" | "denied" | "failure">("all");
   const [q, setQ] = useState("");
   const [action, setAction] = useState<"all" | AuditAction>("all");
+  const [integrity, setIntegrity] = useState<{ valid: boolean; entries_checked: number; first_invalid_id: number | null } | null>(null);
+  useEffect(() => {
+    auditApi.verifyChain().then(setIntegrity).catch(() => setIntegrity(null));
+  }, []);
   const rows = useMemo(
     () => data.filter((e) =>
       (outcome === "all" || e.outcome === outcome) &&
@@ -40,7 +51,8 @@ function Audit() {
     [data, outcome, action, q],
   );
 
-  if (role === "viewer") return <AppShell><NotInRoleView role={role} /></AppShell>;
+  if (role === null) return <div className="p-8">Loading your permissions...</div>;
+  if (role !== "administrator") return <AppShell><NotInRoleView role={role} /></AppShell>;
 
   return (
     <AppShell>
@@ -48,15 +60,18 @@ function Audit() {
       <PageHeader
         eyebrow="Ledger"
         title="Audit activity"
-        description={role === "administrator" ? "All activity across the organisation." : "Activity on documents you own."}
+        description="All activity across the organisation."
         actions={
           <div className="flex rounded-md border border-border bg-card p-1">
-            {(["all", "success", "denied"] as const).map((o) => (
+            {(["all", "success", "denied", "failure"] as const).map((o) => (
               <button key={o} onClick={() => setOutcome(o)} className={`eyebrow rounded-sm px-3 py-1.5 ${outcome === o ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{o}</button>
             ))}
           </div>
         }
       />
+      <p className="text-sm text-muted-foreground">
+        Audit-chain integrity: {integrity === null ? "checking/unavailable" : integrity.valid ? `verified (${integrity.entries_checked} entries)` : `TAMPERING DETECTED at entry ${integrity.first_invalid_id}`}
+      </p>
       <Panel>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row">
           <div className="relative flex-1">
@@ -65,7 +80,7 @@ function Audit() {
           </div>
           <select aria-label="Filter by action" value={action} onChange={(e) => setAction(e.target.value as typeof action)} className={`${inputCls} sm:w-48`}>
             <option value="all">All actions</option>
-            {ACTIONS.map((a) => <option key={a} value={a}>{a.replace("_", " ")}</option>)}
+            {ACTIONS.map((a) => <option key={a} value={a}>{a.replaceAll("_", " ")}</option>)}
           </select>
         </div>
         {rows.length === 0 && <p className="px-5 py-12 text-center text-sm text-muted-foreground">No events match these filters.</p>}
@@ -74,7 +89,7 @@ function Audit() {
             <li key={e.id} className="grid gap-2 border-b border-border px-5 py-4 last:border-0 md:grid-cols-[170px_1fr_120px_90px] md:items-center md:gap-4">
               <time className="font-mono text-xs text-muted-foreground">{formatDateTime(e.at)}</time>
               <div className="min-w-0">
-                <div className="text-sm"><b className="font-medium">{e.actorName}</b> <span className="eyebrow ml-1 rounded-sm bg-secondary px-1.5 py-0.5">{e.action.replace("_", " ")}</span></div>
+                <div className="text-sm"><b className="font-medium">{e.actorName}</b> <span className="eyebrow ml-1 rounded-sm bg-secondary px-1.5 py-0.5">{e.action.replaceAll("_", " ")}</span></div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">{e.target}</div>
               </div>
               <div className="font-mono text-xs text-muted-foreground">{e.ip}</div>

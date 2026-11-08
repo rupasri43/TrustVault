@@ -29,6 +29,7 @@ export interface DocumentSummary {
   classification: Classification;
   ownerId: string;
   ownerName: string;
+  ownerEmail?: string;
   updatedAt: string;
   sharedWith: number;
   sha256: string;
@@ -54,15 +55,18 @@ export interface Permission {
 }
 
 export type AuditAction =
-  | "login"
-  | "upload"
-  | "view"
-  | "download"
-  | "share"
-  | "revoke"
-  | "delete"
+  | "user_login"
+  | "user_logout"
+  | "user_registration"
+  | "document_upload"
+  | "document_view"
+  | "document_download"
+  | "document_edit"
+  | "document_delete"
+  | "document_share"
+  | "document_revoke"
   | "role_change"
-  | "failed_login";
+  | "permission_list";
 
 export interface AuditEvent {
   id: string;
@@ -72,7 +76,7 @@ export interface AuditEvent {
   action: AuditAction;
   target: string;
   ip: string;
-  outcome: "success" | "denied";
+  outcome: "success" | "denied" | "failure";
 }
 
 export interface AdminStats {

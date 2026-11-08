@@ -1,11 +1,13 @@
 import re
+import os
 import sqlite3
 from pathlib import Path
 from getpass import getpass
 from werkzeug.security import generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "trustvault.db"
+DATA_DIR = Path(os.environ.get("TRUSTVAULT_DATA_DIR", str(BASE_DIR)))
+DB_PATH = DATA_DIR / "trustvault.db"
 
 
 def create_admin():

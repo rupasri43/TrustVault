@@ -16,7 +16,7 @@ export function UserDirectory({ users }: { users: User[] }) {
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
   const [editing, setEditing] = useState<User | null>(null);
-  const [draft, setDraft] = useState<Pick<User, "role" | "status">>({ role: "viewer", status: "active" });
+  const [draft, setDraft] = useState<Pick<User, "role">>({ role: "viewer" });
   const [saving, setSaving] = useState(false);
 
   const rows = users.filter(
@@ -24,13 +24,13 @@ export function UserDirectory({ users }: { users: User[] }) {
       (u.name + u.email).toLowerCase().includes(q.toLowerCase()),
   );
 
-  const open = (u: User) => { setEditing(u); setDraft({ role: u.role, status: u.status }); };
+  const open = (u: User) => { setEditing(u); setDraft({ role: u.role }); };
 
   const save = async () => {
     if (!editing) return;
     setSaving(true);
     try {
-      const updated = await adminApi.updateUser(editing.id, draft);
+      const updated = await adminApi.updateUser(editing.id, { role: draft.role });
       qc.setQueryData(adminUsersQuery().queryKey, users.map((u) => (u.id === updated.id ? updated : u)));
       toast.success(USE_MOCKS ? "Shown in preview only — not saved." : `Updated ${updated.name}.`);
       setEditing(null);
@@ -111,14 +111,8 @@ export function UserDirectory({ users }: { users: User[] }) {
                 ))}
               </div>
             </Field>
-            <Field label="Account status">
-              <div className="grid grid-cols-2 gap-2">
-                {(["active", "suspended"] as const).map((s) => (
-                  <button key={s} type="button" onClick={() => setDraft((d) => ({ ...d, status: s }))} className={`rounded-md border px-3 py-2.5 text-xs font-medium capitalize ${draft.status === s ? "border-brass bg-brass-soft" : "border-border hover:bg-secondary"}`}>{s}</button>
-                ))}
-              </div>
-            </Field>
-            <p className="text-xs text-muted-foreground">The server checks that you are an administrator before applying this change.</p>
+
+            <p className="text-xs text-muted-foreground">Role changes are checked and recorded by the server. Account suspension is not implemented.</p>
           </div>
           <DialogFooter>
             <button onClick={() => setEditing(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary">Cancel</button>

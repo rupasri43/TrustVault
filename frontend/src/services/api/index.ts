@@ -46,6 +46,10 @@ export const authApi = {
   },
 
   me: async (): Promise<AuthUser> => {
+    if (USE_MOCKS) {
+      const user = MOCK_USERS[1]!;
+      return { id: user.id, name: user.name, email: user.email, role: user.role };
+    }
     const response = await apiRequest<{
       user: {
         id: number | string;
@@ -90,6 +94,11 @@ export const documentsApi = {
       category: string;
       original_filename: string;
       owner_id: number | string;
+      owner_name: string;
+      owner_email: string;
+      size_bytes: number;
+      sha256: string;
+      shared_with: number;
       created_at: string;
       updated_at: string;
     }[];
@@ -105,13 +114,14 @@ export const documentsApi = {
       title: doc.title,
       fileName: doc.original_filename,
       fileType: doc.original_filename.split(".").pop()?.toUpperCase() ?? "FILE",
-      sizeBytes: 0,
+      sizeBytes: doc.size_bytes,
       classification,
       ownerId: String(doc.owner_id),
-      ownerName: "Document owner",
+      ownerName: doc.owner_name,
+      ownerEmail: doc.owner_email,
       updatedAt: doc.updated_at,
-      sharedWith: 0,
-      sha256: "",
+      sharedWith: doc.shared_with,
+      sha256: doc.sha256,
     };
   });
 },
@@ -131,6 +141,11 @@ export const documentsApi = {
       category: string;
       original_filename: string;
       owner_id: number | string;
+      owner_name: string;
+      owner_email: string;
+      size_bytes: number;
+      sha256: string;
+      shared_with: number;
       created_at: string;
       updated_at: string;
     };
@@ -149,13 +164,14 @@ export const documentsApi = {
     title: doc.title,
     fileName: doc.original_filename,
     fileType: doc.original_filename.split(".").pop()?.toUpperCase() ?? "FILE",
-    sizeBytes: 0,
+    sizeBytes: doc.size_bytes,
     classification,
     ownerId: String(doc.owner_id),
-    ownerName: "Document owner",
+    ownerName: doc.owner_name,
+    ownerEmail: doc.owner_email,
     updatedAt: doc.updated_at,
-    sharedWith: 0,
-    sha256: "",
+    sharedWith: doc.shared_with,
+    sha256: doc.sha256,
     description: doc.description ?? "",
     createdAt: doc.created_at,
     version: 1,
@@ -174,8 +190,7 @@ export const documentsApi = {
     if (req.expiresAt) fd.append("expires_at", req.expiresAt);
     return apiRequest<DocumentSummary>("/documents", { method: "POST", body: fd });
   },
-  // GET /documents/:id/download — returns a short-lived signed URL from the backend
-    // GET /documents/:id/download
+  // GET /documents/:id/download — returns the authorised file bytes
   downloadUrl: async (id: string): Promise<Blob> => {
     if (USE_MOCKS) {
       return new Blob([]);
@@ -240,9 +255,12 @@ export const auditApi = {
         log.document_id ? `Document #${log.document_id}` : "System"
       ),
       ip: "—",
-      outcome: log.outcome === "success" ? "success" : "denied",
+      outcome: log.outcome === "success" ? "success" : log.outcome === "failure" ? "failure" : "denied",
     }));
   },
+  verifyChain: () => USE_MOCKS
+    ? mockDelay({ valid: true, entries_checked: 0, first_invalid_id: null })
+    : apiRequest<{ valid: boolean; entries_checked: number; first_invalid_id: number | null }>("/admin/audit/verify"),
 };
 
 export const adminApi = {

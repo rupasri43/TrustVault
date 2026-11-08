@@ -80,6 +80,99 @@ def write_auth_audit(actor_id, action, outcome, details=None, document_id=None):
 
     finally:
         connection.close()
+
+
+# The first audit entries were written before document_id was included in the hash.
+# Only these exact historical entries (IDs 1-3, which have no document) may still verify
+# with that legacy format. Every other entry must match the current format, so a record
+# cannot be "downgraded" to the weaker legacy hash to hide a modification.
+LEGACY_AUDIT_HASH_MAX_ID = 3
+
+
+def verify_audit_chain(connection):
+    """Verify the audit hash chain.
+
+    Entries with id <= LEGACY_AUDIT_HASH_MAX_ID and no document_id may match either the
+    legacy or the current hash format. All other entries must match the current format.
+    This function only reads; it never modifies audit data.
+    """
+    rows = connection.execute(
+        """SELECT id, actor_id, document_id, action, outcome, details,
+                  previous_hash, entry_hash, created_at
+           FROM audit_logs ORDER BY id ASC"""
+    ).fetchall()
+
+    expected_previous = None
+    legacy_entries = 0
+
+    for index, row in enumerate(rows, start=1):
+        try:
+            details = json.loads(row["details"]) if row["details"] else None
+        except (TypeError, json.JSONDecodeError):
+            return {
+                "valid": False,
+                "entries_checked": index,
+                "first_invalid_id": row["id"]
+            }
+
+        common_payload = {
+            "actor_id": row["actor_id"],
+            "action": row["action"],
+            "outcome": row["outcome"],
+            "details": details,
+            "created_at": row["created_at"],
+            "previous_hash": expected_previous,
+        }
+
+        old_hash = hashlib.sha256(
+            json.dumps(
+                common_payload,
+                sort_keys=True,
+                separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+
+        new_payload = {
+            **common_payload,
+            "document_id": row["document_id"],
+        }
+
+        new_hash = hashlib.sha256(
+            json.dumps(
+                new_payload,
+                sort_keys=True,
+                separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+
+        legacy_allowed = (
+            row["id"] <= LEGACY_AUDIT_HASH_MAX_ID
+            and row["document_id"] is None
+        )
+        accepted_hashes = (old_hash, new_hash) if legacy_allowed else (new_hash,)
+
+        if (
+            row["previous_hash"] != expected_previous
+            or row["entry_hash"] not in accepted_hashes
+        ):
+            return {
+                "valid": False,
+                "entries_checked": index,
+                "first_invalid_id": row["id"]
+            }
+
+        if legacy_allowed and row["entry_hash"] == old_hash:
+            legacy_entries += 1
+
+        expected_previous = row["entry_hash"]
+
+    return {
+        "valid": True,
+        "entries_checked": len(rows),
+        "first_invalid_id": None,
+        "legacy_entries": legacy_entries
+    }
+
 def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
@@ -168,7 +261,7 @@ def register():
             INSERT INTO users (name, email, password_hash, role)
             VALUES (?, ?, ?, ?)
             """,
-            (name, email, password_hash, "owner")
+            (name, email, password_hash, "viewer")
         )
         connection.commit()
 
@@ -176,12 +269,12 @@ def register():
             actor_id=None,
             action="user_registration",
             outcome="success",
-            details={"email": email, "role": "owner"}
+            details={"email": email, "role": "viewer"}
         )
 
         return jsonify({
             "message": "Registration successful",
-            "role": "owner"
+            "role": "viewer"
         }), 201
 
     except sqlite3.IntegrityError:

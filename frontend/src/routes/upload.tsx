@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { FileUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell, NotInRoleView } from "@/components/tv/AppShell";
 import { Field, MockNotice, PageHeader, Panel, inputCls } from "@/components/tv/primitives";
-import { usePreviewRole } from "@/lib/preview-role";
+import { authApi } from "@/services/api";
 import { formatBytes } from "@/lib/format";
 import { documentsApi, USE_MOCKS, type Classification } from "@/services/api";
 
@@ -23,22 +23,26 @@ export const Route = createFileRoute("/upload")({
 });
 
 const LEVELS: { value: Classification; note: string }[] = [
-  { value: "public", note: "Anyone in the organisation" },
+  { value: "public", note: "Public classification; access still requires an explicit grant" },
   { value: "internal", note: "Named staff only" },
   { value: "confidential", note: "Need-to-know" },
   { value: "restricted", note: "Strictly limited, short expiry" },
 ];
 
 function UploadPage() {
-  const { role } = usePreviewRole();
+  const [role, setRole] = useState<"administrator" | "owner" | "viewer" | null>(null);
   const navigate = useNavigate();
+  useEffect(() => {
+    authApi.me().then((user) => setRole(user.role)).catch(() => navigate({ to: "/" }));
+  }, [navigate]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [drag, setDrag] = useState(false);
   const [level, setLevel] = useState<Classification>("internal");
   const [busy, setBusy] = useState(false);
 
-  if (role === "viewer") return <AppShell><NotInRoleView role={role} /></AppShell>;
+  if (role === null) return <div className="p-8">Loading your permissions...</div>;
+  if (role !== "owner") return <AppShell><NotInRoleView role={role} /></AppShell>;
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -51,7 +55,7 @@ function UploadPage() {
         title: String(fd.get("title")),
         description: String(fd.get("description")),
         classification: level,
-        expiresAt: (fd.get("expires") as string) || null,
+        expiresAt: null,
       });
       toast.success(USE_MOCKS ? "Preview only — the file was not stored." : "Document uploaded.");
       navigate({ to: "/dashboard" });
@@ -78,7 +82,7 @@ function UploadPage() {
             >
               <FileUp className="h-8 w-8 text-brass" />
               <p className="mt-3 font-medium">Drop a file or click to browse</p>
-              <p className="mt-1 text-xs text-muted-foreground">PDF, DOCX, XLSX, PNG · up to 50 MB</p>
+              <p className="mt-1 text-xs text-muted-foreground">PDF, DOCX, PNG, JPG, TXT, CSV · up to 10 MB</p>
               <input ref={inputRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
             {file && (
@@ -109,11 +113,6 @@ function UploadPage() {
                   <span className={`h-3.5 w-3.5 rounded-full border-2 ${level === l.value ? "border-brass bg-brass" : "border-input"}`} />
                 </button>
               ))}
-            </div>
-          </Panel>
-          <Panel title="Retention" eyebrow="Step 3">
-            <div className="p-5">
-              <Field label="Access expires" hint="Optional. Leave empty for no expiry."><input name="expires" type="date" className={inputCls} /></Field>
             </div>
           </Panel>
           <button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
