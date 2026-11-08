@@ -29,7 +29,52 @@ def initialize_database():
         print("TrustVault database initialized successfully.")
     finally:
         connection.close()
+def provision_bootstrap_admin(email, password):
+    # TEMPORARY: remove after the evaluator admin is created.
+    import re
+    from datetime import datetime, timezone
+    from werkzeug.security import generate_password_hash
+    from auth import write_auth_audit
 
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or len(email) > 254:
+        print("Bootstrap skipped: invalid email.")
+        return
+    if len(password) < 12 or len(password) > 128:
+        print("Bootstrap skipped: password must be 12-128 characters.")
+        return
+
+    connection = sqlite3.connect(DATABASE_PATH)
+    try:
+        existing = connection.execute(
+            "SELECT id FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        if existing:
+            print("Bootstrap skipped: account already exists.")
+            return
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        backup = sqlite3.connect(DATA_DIR / f"trustvault_backup_{stamp}.db")
+        try:
+            connection.backup(backup)
+        finally:
+            backup.close()
+
+        cursor = connection.execute(
+            "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            ("Evaluator Admin", email, generate_password_hash(password), "admin"),
+        )
+        connection.commit()
+        new_id = cursor.lastrowid
+    finally:
+        connection.close()
+
+    write_auth_audit(
+        actor_id=new_id,
+        action="admin_bootstrap",
+        outcome="success",
+        details={"email": email},
+    )
+    print("Bootstrap admin created.")
 def create_app():
     app = Flask(__name__)
     app.config["WTF_CSRF_SSL_STRICT"] = False
@@ -63,6 +108,11 @@ def create_app():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     initialize_database()
+    bootstrap_email = os.environ.get("TV_BOOTSTRAP_EMAIL", "").strip().lower()
+    bootstrap_password = os.environ.get("TV_BOOTSTRAP_PASSWORD", "")
+    if bootstrap_email and bootstrap_password:
+        with app.app_context():
+            provision_bootstrap_admin(bootstrap_email, bootstrap_password)
     @app.route("/", methods=["GET"])
     def home():
         return jsonify({
