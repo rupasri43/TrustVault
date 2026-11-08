@@ -15,6 +15,7 @@ UPLOAD_FOLDER = DATA_DIR / "private_uploads"
 
 def create_app():
     app = Flask(__name__)
+    app.config["WTF_CSRF_SSL_STRICT"] = False
     CORS(
     app,
     origins=[
